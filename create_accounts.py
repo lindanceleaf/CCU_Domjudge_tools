@@ -1,114 +1,106 @@
 #!/usr/bin/env python3
+"""Create DOMjudge account-import YAML from student and TA roster CSV files."""
+
 import csv
-import glob
-import os
 import sys
-from dotenv import load_dotenv
+from pathlib import Path
+
 import requests
 import yaml
 
-# 1. 載入 .env 環境變數
-load_dotenv()
-
-DOMJUDGE_URL = os.getenv("DOMJUDGE_URL")
-API_USER = os.getenv("API_USER")
-API_PASS = os.getenv("API_PASS")
-DATA_DIR = os.getenv("DATA_DIR", "./")
-
-if not all([DOMJUDGE_URL, API_USER, API_PASS]):
-    print("[!] 錯誤：請確認 .env 檔案中已設定 DOMJUDGE_URL, API_USER, API_PASS")
-    sys.exit(1)
-
-DOMJUDGE_URL = DOMJUDGE_URL.rstrip('/')
+from domjudge_common import find_csv_files, load_settings, upload_multipart
 
 
-def generate_accounts_yaml(data_dir):
+def build_accounts(data_dir: str | Path) -> list[dict[str, str]]:
+    """Build student team accounts and TA admin accounts from roster CSV files.
+
+    Student accounts explicitly bind to the teams imported by ``create_teams``.
+    Admin accounts intentionally omit ``team_id`` so DOMjudge 9.0.0 creates and
+    binds its hidden Jury team automatically. The first occurrence of a user ID
+    wins when it is present in more than one CSV file.
     """
-    依照 DOMjudge 9.0.0 規格產出 accounts.yaml
-    確保 TA 與學生都能同時擁有 Team 且綁定成功
-    """
-    csv_pattern = os.path.join(data_dir, "*.csv")
-    csv_files = glob.glob(csv_pattern)
+    accounts: list[dict[str, str]] = []
+    seen_ids: dict[str, tuple[str, int]] = {}
 
-    if not csv_files:
-        print(f"[!] 在目錄 '{data_dir}' 中找不到任何 CSV 檔案。")
-        sys.exit(1)
-
-    accounts = []
-    seen_ids = set()
-
-    for file_path in csv_files:
-        filename = os.path.basename(file_path)
-        base_name, _ = os.path.splitext(filename)
-        is_ta = (base_name.upper() == "TA")
-
-        # TA 歸入 observers，學生歸入該班級 group
-        target_group = "observers" if is_ta else base_name
-
-        with open(file_path, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            next(reader, None)  # 略過表頭
-
-            for row in reader:
-                if not row or len(row) < 2:
+    for csv_path in find_csv_files(data_dir):
+        is_ta = csv_path.stem.upper() == "TA"
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as source:
+            reader = csv.reader(source)
+            next(reader, None)
+            for row_number, row in enumerate(reader, start=2):
+                if len(row) < 2:
                     continue
-
                 name = row[0].strip()
-                student_id = row[1].strip()
-
-                if not student_id:
+                account_id = row[1].strip()
+                if not account_id:
+                    continue
+                if account_id in seen_ids:
+                    first_file, first_line = seen_ids[account_id]
+                    print(
+                        f"[-] 警告：發現重複學號 '{account_id}' "
+                        f"(首次位於 {first_file}:{first_line}，"
+                        f"跳過 {csv_path.name}:{row_number})"
+                    )
                     continue
 
-                if student_id in seen_ids:
-                    continue
-                seen_ids.add(student_id)
-
-                # 統一建構 entry：
-                # 學生與 TA 皆同時具備 team_id 與 team 欄位以支援 DOMjudge 9.0 的驗證相容
-                entry = {
-                    "id": student_id,
-                    "username": student_id,
-                    "password": student_id,
-                    "name": name,
+                seen_ids[account_id] = (csv_path.name, row_number)
+                account = {
+                    "id": account_id,
+                    "username": account_id,
+                    "password": account_id,
                     "type": "admin" if is_ta else "team",
-                    "team": student_id,
-                    "team_id": student_id,
-                    "group": target_group
+                    "name": name,
                 }
-                accounts.append(entry)
+                if not is_ta:
+                    account["team_id"] = account_id
+                accounts.append(account)
 
-    output_filename = "accounts.yaml"
-    with open(output_filename, "w", encoding="utf-8") as f:
-        yaml.dump(accounts, f, allow_unicode=True, sort_keys=False)
-
-    print(f"[*] 成功產出 {output_filename} (共 {len(accounts)} 筆帳號設定)")
-    return output_filename
+    return accounts
 
 
-def upload_accounts(session, base_url, file_path):
-    """上傳 accounts.yaml 至 DOMjudge 9.0.0"""
-    url = f"{base_url}/api/v4/users/accounts"
-    print(f"[*] 正在上傳 accounts 至 {url} ...")
-
-    with open(file_path, "rb") as f:
-        files = {"yaml": (os.path.basename(file_path), f, "application/x-yaml")}
-        resp = session.post(url, files=files)
-
-    if resp.ok:
-        print(f"[+] accounts 上傳成功！ (Status: {resp.status_code})")
-    else:
-        print(f"[!] accounts 上傳失敗！ (Status: {resp.status_code})")
-        print(f"    錯誤訊息: {resp.text}")
-        sys.exit(1)
+def write_accounts(accounts, output_path) -> Path:
+    """Write accounts as UTF-8 YAML and return the destination path."""
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        yaml.safe_dump(accounts, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return destination
 
 
-def main():
-    session = requests.Session()
-    session.auth = (API_USER, API_PASS)
+def upload_accounts(session, base_url, output_path, account_count) -> bool:
+    """Upload a non-empty accounts YAML file through the v4 endpoint."""
+    if account_count == 0:
+        return True
+    upload_multipart(session, base_url, "/api/v4/users/accounts", "yaml", output_path)
+    return True
 
-    yaml_file = generate_accounts_yaml(DATA_DIR)
-    upload_accounts(session, DOMJUDGE_URL, yaml_file)
+
+def run_accounts(settings, session=None) -> int:
+    """Build, persist, and optionally upload accounts; return the account count."""
+    accounts = build_accounts(settings.data_dir)
+    output_path = write_accounts(accounts, Path(settings.data_dir) / "accounts.yaml")
+    if not accounts:
+        return 0
+    if session is None:
+        session = requests.Session()
+        session.auth = (settings.api_user, settings.api_pass)
+    upload_accounts(session, settings.base_url, output_path, len(accounts))
+    return len(accounts)
+
+
+def main() -> int:
+    try:
+        settings = load_settings()
+        session = requests.Session()
+        session.auth = (settings.api_user, settings.api_pass)
+        run_accounts(settings, session)
+    except (ValueError, OSError, requests.RequestException) as error:
+        print(f"[!] {error}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
