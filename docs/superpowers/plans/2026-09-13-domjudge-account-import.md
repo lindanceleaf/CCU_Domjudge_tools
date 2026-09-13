@@ -4,7 +4,7 @@
 
 **Goal:** Provide three independently executable Python importers for groups, teams, and accounts plus `setup_domjudge.py` to execute all three in dependency order against DOMjudge 9.0.0.
 
-**Architecture:** Each feature script owns its data transformation, output file, upload function, and standalone `main()`. A small `domjudge_common.py` module owns only shared configuration, CSV discovery, and authenticated HTTP upload behavior; `setup_domjudge.py` imports public functions directly instead of spawning subprocesses.
+**Architecture:** Each feature script owns its data transformation, output file, upload function, and standalone `main()`. A small `domjudge_common.py` module owns shared configuration, CSV discovery, and HTTP upload behavior. `setup_domjudge.py` directly calls each public builder once, finishes writing all three payloads before any upload, then invokes the public upload functions in groups → teams → accounts order through one authenticated session. It never re-reads CSVs during uploads or spawns subprocesses.
 
 **Tech Stack:** Python 3.10+, `requests`, `python-dotenv`, `PyYAML`, standard-library `unittest`
 
@@ -17,6 +17,8 @@
 - Student passwords remain equal to student IDs for this iteration.
 - Student accounts explicitly use `team_id`; admin accounts rely on DOMjudge 9.0.0 to create and bind their hidden Jury team.
 - Each feature script must remain directly executable.
+- Missing CSVs or any roster read failure must stop setup before its first API request; TA-only and header-only rosters remain valid.
+- Ignore real roster CSVs at every repository depth, including configured `DATA_DIR` subdirectories; only fictional CSVs directly under `examples/` are exempt.
 - Production DOMjudge is never mutated by automated tests.
 
 ---
@@ -84,7 +86,7 @@ def load_settings(load_env_file: bool = True) -> Settings:
     return Settings(required["DOMJUDGE_URL"].rstrip("/"), required["API_USER"], required["API_PASS"], Path(os.getenv("DATA_DIR", ".")))
 ```
 
-`upload_multipart` must call `session.post(url, files={field_name: (...)}, timeout=30)`, call `raise_for_status()`, and never retry a legacy endpoint.
+`find_csv_files` raises an actionable error including `DATA_DIR` when discovery finds no CSVs. `upload_multipart` must call `session.post(url, files={field_name: (...)}, timeout=30)`, call `raise_for_status()`, and never retry a legacy endpoint. Connection and timeout errors must include the endpoint. HTTP errors must additionally include the status and a whitespace-normalized response-body summary bounded to 500 characters plus a truncation marker. Test failures with real `requests.Response` objects.
 
 - [ ] **Step 4: Implement the minimal group transformation and standalone flow**
 
@@ -175,8 +177,10 @@ def test_student_account_references_imported_team(self):
 def test_ta_account_is_admin_without_explicit_team_id(self):
     write_csv(self.root / "TA.csv", [("Tutor", "9001")])
     account = build_accounts(self.root)[0]
-    self.assertEqual(account["type"], "admin")
-    self.assertNotIn("team_id", account)
+    self.assertEqual(account, {
+        "id": "9001", "username": "9001", "password": "9001",
+        "type": "admin", "name": "Tutor",
+    })
 ```
 
 The second test deliberately verifies the input contract that triggers DOMjudge 9.0.0's own automatic Jury-team creation and binding.
@@ -211,30 +215,12 @@ git commit -m "feat: import student and admin accounts"
 - Create: `tests/test_setup.py`
 
 **Interfaces:**
-- Consumes: `load_settings`, `run_groups`, `run_teams`, and `run_accounts`
+- Consumes: `load_settings` and each feature module's public `build_*`, `write_*`, and `upload_*` functions; the standalone `run_*` functions remain independently usable.
 - Produces: `run_setup(settings, session=None) -> dict[str, int]` and directly executable `main() -> None`
 
 - [ ] **Step 1: Write the failing ordering and stop-on-error tests**
 
-```python
-@patch("setup_domjudge.run_accounts")
-@patch("setup_domjudge.run_teams")
-@patch("setup_domjudge.run_groups")
-def test_run_setup_calls_importers_in_dependency_order(groups, teams, accounts):
-    order = []
-    groups.side_effect = lambda *_: order.append("groups") or 1
-    teams.side_effect = lambda *_: order.append("teams") or 2
-    accounts.side_effect = lambda *_: order.append("accounts") or 3
-    run_setup(self.settings, self.session)
-    self.assertEqual(order, ["groups", "teams", "accounts"])
-
-def test_run_setup_does_not_continue_after_failure(self):
-    with patch("setup_domjudge.run_groups", side_effect=RuntimeError("bad")), \
-         patch("setup_domjudge.run_teams") as teams:
-        with self.assertRaisesRegex(RuntimeError, "bad"):
-            run_setup(self.settings, self.session)
-        teams.assert_not_called()
-```
+Use temporary student/TA CSV fixtures and a recording HTTP session that reads the actual multipart payloads. Assert exact payload content, multipart fields, and groups → teams → accounts request order. Verify both group and team failures stop all later uploads. Assert each builder runs once before the first request, every output exists before that request, a final TA read/decode failure sends no request, and input changes after the first request cannot affect later payloads. Verify one authenticated default session is shared and a supplied falsey session is retained.
 
 - [ ] **Step 2: Run setup tests and verify missing interface failures**
 
@@ -246,12 +232,19 @@ Expected: FAIL because `run_setup` does not exist and the old setup duplicates a
 
 ```python
 def run_setup(settings, session=None):
-    session = session or create_session(settings)
-    return {
-        "groups": run_groups(settings, session),
-        "teams": run_teams(settings, session),
-        "accounts": run_accounts(settings, session),
-    }
+    groups = create_groups.build_groups(settings.data_dir)
+    teams = create_teams.build_teams(settings.data_dir)
+    accounts = create_accounts.build_accounts(settings.data_dir)
+    directory = Path(settings.data_dir)
+    groups_path = create_groups.write_groups(groups, directory / "groups.json")
+    teams_path = create_teams.write_teams(teams, directory / "teams.json")
+    accounts_path = create_accounts.write_accounts(accounts, directory / "accounts.yaml")
+    if session is None:
+        session = create_session(settings)
+    create_groups.upload_groups(session, settings.base_url, groups_path, len(groups))
+    create_teams.upload_teams(session, settings.base_url, teams_path, len(teams))
+    create_accounts.upload_accounts(session, settings.base_url, accounts_path, len(accounts))
+    return {"groups": len(groups), "teams": len(teams), "accounts": len(accounts)}
 ```
 
 `main()` prints a final count summary only after all three functions return successfully. Exceptions produce a concise error and exit code 1.
@@ -281,11 +274,11 @@ git commit -m "feat: orchestrate all account imports"
 
 **Interfaces:**
 - Documents: the four executable entry points and generated inspection files
-- Protects: `.env`, root-level real CSV rosters, and generated import artifacts
+- Protects: `.env`, real CSV rosters throughout the repository (including configured `DATA_DIR` subdirectories), and generated import artifacts
 
 - [ ] **Step 1: Add a repository hygiene test**
 
-Add `tests/test_repository.py` that checks `.gitignore` contains `.env`, root `/*.csv`, `groups.json`, `teams.json`, `accounts.yaml`, and Python cache patterns, while both example CSV files remain available.
+Add `tests/test_repository.py` that executes `git check-ignore --no-index --stdin -z` against root and nested roster paths (including mixed-case `.CSV`), `.env`, generated artifacts, and caches. Assert these are ignored while `examples/class.csv` and `examples/TA.csv` remain trackable. Verify the example files contain only the known fictional fixture rows and reserved `example.test` addresses. Use `*.[cC][sS][vV]` and `!/examples/*.[cC][sS][vV]` to implement the CSV boundary.
 
 - [ ] **Step 2: Run the repository test and verify it fails**
 
@@ -303,7 +296,7 @@ PyYAML>=6.0,<7
 requests>=2.31,<3
 ```
 
-`.env.example` contains `DOMJUDGE_URL`, `API_USER`, `API_PASS`, and `DATA_DIR`. Example CSVs use fictional names, IDs, and email addresses. README documents that each feature can be executed independently and that executing it performs a real API import after writing its inspection file.
+`.env.example` contains `DOMJUDGE_URL`, `API_USER`, `API_PASS`, and `DATA_DIR`. Example CSVs use fictional names, IDs, and email addresses. README documents that each feature can be executed independently and that executing it performs a real API import after writing its inspection file. Provide a separate generation-only inspection example using the public build/write functions, with no session or credentials required. Explain that setup rebuilds the current inputs when subsequently invoked to import.
 
 - [ ] **Step 4: Run repository and full verification**
 

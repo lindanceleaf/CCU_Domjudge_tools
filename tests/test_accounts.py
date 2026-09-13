@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -31,15 +32,21 @@ class AccountTests(unittest.TestCase):
     def test_ta_account_is_admin_without_explicit_team_id(self):
         write_csv(self.root / "TA.csv", [("Tutor", "9001")])
         account = build_accounts(self.root)[0]
-        self.assertEqual(account["type"], "admin")
-        self.assertNotIn("team_id", account)
+        self.assertEqual(account, {
+            "id": "9001", "username": "9001", "password": "9001",
+            "type": "admin", "name": "Tutor",
+        })
 
     def test_build_accounts_skips_invalid_rows_and_keeps_first_duplicate(self):
         write_csv(self.root / "A.csv", [("First", "1001"), ("", "")])
         write_csv(self.root / "B.csv", [("Second", "1001"), ("Ignored", "")])
-        accounts = build_accounts(self.root)
+        with patch("builtins.print") as printer:
+            accounts = build_accounts(self.root)
         self.assertEqual(len(accounts), 1)
         self.assertEqual(accounts[0]["name"], "First")
+        printer.assert_called_once_with(
+            "[-] 警告：發現重複學號 '1001' (首次位於 A.csv:2，跳過 B.csv:2)"
+        )
 
     def test_write_accounts_writes_yaml_and_returns_destination(self):
         output_path = self.root / "nested" / "accounts.yaml"

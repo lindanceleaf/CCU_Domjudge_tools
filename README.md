@@ -17,23 +17,54 @@ accounts.
 python -m pip install -r requirements.txt
 ```
 
-Keep real rosters in the configured data directory. Root-level CSV files,
-`.env`, generated import files, and Python caches are ignored by Git.
+Keep real rosters in the configured data directory. CSV files at every depth
+(including a `DATA_DIR` such as `rosters/fall`), `.env`, generated import files,
+and Python caches are ignored by Git. Only the fictional CSVs directly inside
+`examples/` are exempt; do not put real rosters there.
 
 ## Import commands
 
 Each command below is independently executable. It first writes its inspection
 file in `DATA_DIR`, then performs a real API import when it has data to import.
-Review the generated inspection file before using the command with production
-credentials.
+Use the generation-only workflow below to inspect payloads before importing.
 
 | Command | Inspection file | Real API import |
 | --- | --- | --- |
 | `python create_groups.py` | `groups.json` | Creates DOMjudge groups. |
 | `python create_teams.py` | `teams.json` | Creates DOMjudge teams for student rosters. |
 | `python create_accounts.py` | `accounts.yaml` | Creates team accounts for students and admin accounts for TAs. |
-| `python setup_domjudge.py` | `groups.json`, then `teams.json`, then `accounts.yaml` | Runs all three real imports in dependency order. |
+| `python setup_domjudge.py` | All three files are built and written before any upload. | Imports groups, then teams, then accounts through one session. |
 
 The standalone importers are not dry runs: after writing their inspection file,
 each sends the corresponding real import request to the configured DOMjudge API.
-`setup_domjudge.py` does the same for all stages in order.
+`setup_domjudge.py` first builds every payload once, so a missing or unreadable
+roster stops setup before any API request. It then uploads the generated files
+in dependency order without reading the CSV inputs again. A failed upload stops
+later stages.
+
+## Inspect files without uploading
+
+From the repository directory, run `python` and enter the following code. Change
+`data_dir` to your roster directory (the same path you will configure as
+`DATA_DIR`). These public build/write functions need no API credentials and make
+no network requests.
+
+```python
+from pathlib import Path
+from create_groups import build_groups, write_groups
+from create_teams import build_teams, write_teams
+from create_accounts import build_accounts, write_accounts
+
+data_dir = Path("rosters/fall")
+groups = build_groups(data_dir)
+teams = build_teams(data_dir)
+accounts = build_accounts(data_dir)
+write_groups(groups, data_dir / "groups.json")
+write_teams(teams, data_dir / "teams.json")
+write_accounts(accounts, data_dir / "accounts.yaml")
+```
+
+Inspect those three files locally. When ready, configure the credentials and
+run `python setup_domjudge.py`; it rebuilds the payloads from the current CSVs
+and performs the real imports. Keep the CSVs unchanged between inspection and
+import if you want to import the data you reviewed.

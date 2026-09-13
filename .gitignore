@@ -1,6 +1,7 @@
-# Local credentials, root-level source rosters, and generated imports.
+# Local credentials, source rosters at any depth, and generated imports.
 .env
-/*.csv
+*.[cC][sS][vV]
+!/examples/*.[cC][sS][vV]
 groups.json
 teams.json
 accounts.yaml

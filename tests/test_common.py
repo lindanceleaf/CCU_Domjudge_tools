@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
+
 from domjudge_common import find_csv_files, load_settings, upload_multipart
 
 
@@ -69,6 +71,13 @@ class CommonRuntimeTests(unittest.TestCase):
             ["Alpha.csv", "zeta.CSV"],
         )
 
+    def test_find_csv_files_rejects_directory_without_rosters(self):
+        (self.root / "notes.txt").write_text("not a roster", encoding="utf-8")
+        with self.assertRaises(ValueError) as raised:
+            find_csv_files(self.root)
+        self.assertIn(str(self.root), str(raised.exception))
+        self.assertIn("CSV", str(raised.exception))
+
     def test_upload_multipart_posts_named_field_with_timeout(self):
         payload = self.root / "groups.json"
         payload.write_text(json.dumps([]), encoding="utf-8")
@@ -91,3 +100,56 @@ class CommonRuntimeTests(unittest.TestCase):
         self.assertIn("json", kwargs["files"])
         self.assertEqual(kwargs["files"]["json"][0], "groups.json")
         self.assertEqual(kwargs["files"]["json"][2], "application/json")
+
+    def test_upload_http_failure_contains_endpoint_status_and_bounded_body(self):
+        payload = self.root / "groups.json"
+        payload.write_text("[]", encoding="utf-8")
+        url = "https://judge.example/api/v4/users/groups"
+        for status in (400, 500):
+            with self.subTest(status=status):
+                response = requests.Response()
+                response.status_code = status
+                response.url = url
+                response.encoding = "utf-8"
+                response._content = ("permission denied\n" + "x" * 2000 + "END_OF_BODY").encode()
+                response.request = requests.Request("POST", url).prepare()
+                session = FakeSession(response)
+                with self.assertRaises(requests.HTTPError) as raised:
+                    upload_multipart(session, "https://judge.example", "/api/v4/users/groups", "json", payload)
+                error = raised.exception
+                self.assertIn(url, str(error))
+                self.assertIn(str(status), str(error))
+                self.assertIn("permission denied", str(error))
+                self.assertNotIn("END_OF_BODY", str(error))
+                self.assertNotIn("\n", str(error))
+                self.assertLess(len(str(error)), 750)
+                self.assertIs(error.response, response)
+                self.assertEqual(len(session.calls), 1)
+
+    def test_upload_http_failure_handles_empty_body(self):
+        payload = self.root / "groups.json"
+        payload.write_text("[]", encoding="utf-8")
+        response = requests.Response()
+        response.status_code = 403
+        response._content = b""
+        session = FakeSession(response)
+        with self.assertRaises(requests.HTTPError) as raised:
+            upload_multipart(session, "https://judge.example", "/api/v4/users/groups", "json", payload)
+        self.assertIn("/api/v4/users/groups", str(raised.exception))
+        self.assertIn("403", str(raised.exception))
+        self.assertIn("empty", str(raised.exception).lower())
+
+    def test_upload_connection_and_timeout_failures_include_endpoint(self):
+        payload = self.root / "groups.json"
+        payload.write_text("[]", encoding="utf-8")
+        for error_type in (requests.ConnectionError, requests.Timeout):
+            with self.subTest(error_type=error_type.__name__):
+                session = FakeSession(None)
+                original = error_type("connection unavailable")
+                with patch.object(session, "post", side_effect=original) as post:
+                    with self.assertRaises(requests.RequestException) as raised:
+                        upload_multipart(session, "https://judge.example", "/api/v4/users/groups", "json", payload)
+                self.assertIn("https://judge.example/api/v4/users/groups", str(raised.exception))
+                self.assertIn("connection unavailable", str(raised.exception))
+                self.assertIs(raised.exception.__cause__, original)
+                self.assertEqual(post.call_count, 1)

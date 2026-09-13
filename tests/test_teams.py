@@ -28,10 +28,22 @@ class TeamTests(unittest.TestCase):
             {"id": "1001", "group_ids": ["CAT"], "name": "Amy"}
         ])
 
+    def test_build_teams_excludes_differently_cased_ta_csv(self):
+        write_csv(self.root / "CAT.csv", [("Amy", "1001")])
+        write_csv(self.root / "ta.CSV", [("Tutor", "9001")])
+        self.assertEqual(build_teams(self.root), [
+            {"id": "1001", "group_ids": ["CAT"], "name": "Amy"}
+        ])
+
     def test_build_teams_keeps_first_duplicate_student(self):
         write_csv(self.root / "A.csv", [("First", "1001")])
         write_csv(self.root / "B.csv", [("Second", "1001")])
-        self.assertEqual(len(build_teams(self.root)), 1)
+        with patch("builtins.print") as printer:
+            teams = build_teams(self.root)
+        self.assertEqual(teams, [{"id": "1001", "group_ids": ["A"], "name": "First"}])
+        printer.assert_called_once_with(
+            "[-] 警告：發現重複學號 '1001' (首次位於 A.csv:2，跳過 B.csv:2)"
+        )
 
     def test_build_teams_supports_utf8_bom_and_reports_duplicate_location(self):
         (self.root / "A.csv").write_text("\ufeffname,id\nFirst,1001\n", encoding="utf-8")

@@ -2,12 +2,13 @@
 """Import DOMjudge groups, teams, and accounts in dependency order."""
 
 import sys
+from pathlib import Path
 
 import requests
 
-from create_accounts import run_accounts
-from create_groups import run_groups
-from create_teams import run_teams
+import create_accounts
+import create_groups
+import create_teams
 from domjudge_common import load_settings
 
 
@@ -19,13 +20,22 @@ def create_session(settings):
 
 
 def run_setup(settings, session=None) -> dict[str, int]:
-    """Run the dependent imports, stopping immediately if any step fails."""
-    session = session or create_session(settings)
-    return {
-        "groups": run_groups(settings, session),
-        "teams": run_teams(settings, session),
-        "accounts": run_accounts(settings, session),
-    }
+    """Build all payloads before uploading them in dependency order."""
+    groups = create_groups.build_groups(settings.data_dir)
+    teams = create_teams.build_teams(settings.data_dir)
+    accounts = create_accounts.build_accounts(settings.data_dir)
+
+    directory = Path(settings.data_dir)
+    groups_path = create_groups.write_groups(groups, directory / "groups.json")
+    teams_path = create_teams.write_teams(teams, directory / "teams.json")
+    accounts_path = create_accounts.write_accounts(accounts, directory / "accounts.yaml")
+
+    if session is None:
+        session = create_session(settings)
+    create_groups.upload_groups(session, settings.base_url, groups_path, len(groups))
+    create_teams.upload_teams(session, settings.base_url, teams_path, len(teams))
+    create_accounts.upload_accounts(session, settings.base_url, accounts_path, len(accounts))
+    return {"groups": len(groups), "teams": len(teams), "accounts": len(accounts)}
 
 
 def main() -> None:
