@@ -1,9 +1,12 @@
+# Local credentials, root-level source rosters, and generated imports.
 .env
 /*.csv
 groups.json
 teams.json
 accounts.yaml
 *.zip
+
+# Python build and test artifacts.
 __pycache__/
 *.py[cod]
 .pytest_cache/
