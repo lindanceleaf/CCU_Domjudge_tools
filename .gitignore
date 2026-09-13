@@ -1,0 +1,12 @@
+.env
+/*.csv
+groups.json
+teams.json
+accounts.yaml
+*.zip
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.worktrees/
+.superpowers/
