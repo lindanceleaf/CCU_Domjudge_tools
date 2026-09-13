@@ -29,6 +29,11 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.assertTrue((REPOSITORY_ROOT / "examples" / "class.csv").is_file())
         self.assertTrue((REPOSITORY_ROOT / "examples" / "TA.csv").is_file())
 
+    def test_readme_declares_domjudge_9_compatibility(self):
+        """Omitting the supported DOMjudge release misleads deployers."""
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("DOMjudge 9.0.0", readme)
+
 
 if __name__ == "__main__":
     unittest.main()

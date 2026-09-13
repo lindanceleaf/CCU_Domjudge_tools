@@ -1,8 +1,8 @@
 # DOMjudge account-import tools
 
 These scripts build DOMjudge groups, teams, and user accounts from CSV roster
-files. The sample rosters in [`examples/`](examples/) contain entirely
-fictional data and are safe to copy as a starting point.
+files. They target DOMjudge 9.0.0. The sample rosters in [`examples/`](examples/)
+contain entirely fictional data and are safe to copy as a starting point.
 
 ## Setup
 
