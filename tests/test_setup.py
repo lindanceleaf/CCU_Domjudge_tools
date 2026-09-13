@@ -79,7 +79,7 @@ class SetupTests(unittest.TestCase):
 
     def test_run_setup_builds_each_payload_once_before_first_upload(self):
         modules = [create_groups, create_teams, create_accounts]
-        builder_names = ["generate_groups", "build_teams", "build_accounts"]
+        builder_names = ["generate_groups", "generate_teams", "generate_accounts"]
         build_counts = {"groups": 0, "teams": 0, "accounts": 0}
 
         def track_build(stage, original):

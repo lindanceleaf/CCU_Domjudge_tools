@@ -46,23 +46,56 @@ later stages.
 
 From the repository directory, run `python` and enter the following code. Change
 `data_dir` to your roster directory (the same path you will configure as
-`DATA_DIR`). These public build/write functions need no API credentials and make
+`DATA_DIR`). These generation/save functions need no API credentials and make
 no network requests.
 
 ```python
 from pathlib import Path
 from create_groups import generate_groups, save_groups
-from create_teams import build_teams, write_teams
-from create_accounts import build_accounts, write_accounts
+from create_teams import generate_teams, save_teams
+from create_accounts import generate_accounts, save_accounts
 
 data_dir = Path("rosters/fall")
 groups = generate_groups(data_dir)
-teams = build_teams(data_dir)
-accounts = build_accounts(data_dir)
+teams = generate_teams(data_dir)
+accounts = generate_accounts(data_dir)
 save_groups(groups, data_dir / "groups.json")
-write_teams(teams, data_dir / "teams.json")
-write_accounts(accounts, data_dir / "accounts.yaml")
+save_teams(teams, data_dir / "teams.json")
+save_accounts(accounts, data_dir / "accounts.yaml")
 ```
+
+`teams.json` contains one student team per non-TA CSV row. The CSV filename
+becomes the group ID:
+
+```json
+[
+  {
+    "id": "S100001",
+    "group_ids": ["CAT"],
+    "name": "Ada Example"
+  }
+]
+```
+
+`accounts.yaml` contains student accounts followed by TA accounts. A student is
+bound to the team with the same ID:
+
+```yaml
+- id: S100001
+  username: S100001
+  password: S100001
+  type: team
+  name: Ada Example
+  team_id: S100001
+- id: T900001
+  username: T900001
+  password: T900001
+  type: admin
+  name: Taylor Sample
+```
+
+TA admin accounts intentionally omit `team_id`; DOMjudge 9.0.0 creates and
+binds the hidden Jury team used by administrator accounts.
 
 Inspect those three files locally. When ready, configure the credentials and
 run `python setup_domjudge.py`; it rebuilds the payloads from the current CSVs
