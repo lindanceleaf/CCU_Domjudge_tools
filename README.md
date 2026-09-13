@@ -1,53 +1,50 @@
-# DOMjudge account-import tools
+# DOMjudge 帳號匯入工具
 
-These scripts build DOMjudge groups, teams, and user accounts from CSV roster
-files. They target DOMjudge 9.0.0. The sample rosters in [`examples/`](examples/)
-contain entirely fictional data and are safe to copy as a starting point.
+[繁體中文](README.md) | [English](README.en.md)
 
-## Setup
+這組工具可從 CSV 名單建立 DOMjudge 的 groups、teams 與使用者帳號，適用於
+DOMjudge 9.0.0。`examples/` 內的範例名單皆為虛構資料，可以安全地複製後使用。
 
-Install the dependencies, then copy `.env.example` to `.env` and enter the
-DOMjudge URL and API credentials. Set `DATA_DIR` to the directory that holds
-your roster CSV files; it defaults to the current directory. CSV files require
-the header `name,id` (additional columns such as `email` are allowed). Every
-roster except `TA.csv` is a student group; `TA.csv` creates administrator
-accounts.
+## 安裝與設定
+
+先安裝相依套件，接著將 `.env.example` 複製為 `.env`，填入 DOMjudge 網址與
+API 帳號密碼。`DATA_DIR` 應指向存放 CSV 名單的資料夾；未設定時會使用目前
+資料夾。
+
+CSV 第一列必須是 `name,id`，後面可以有 `email` 等額外欄位。除了 `TA.csv`
+之外，每個 CSV 檔名都代表一個學生 group；`TA.csv` 則用來建立管理員帳號。
 
 ```sh
 python -m pip install -r requirements.txt
 ```
 
-Keep real rosters in the configured data directory. CSV files at every depth
-(including a `DATA_DIR` such as `rosters/fall`), `.env`, generated import files,
-and Python caches are ignored by Git. Only the fictional CSVs directly inside
-`examples/` are exempt; do not put real rosters there.
+請將真實名單放在設定的資料目錄中。所有位置的 CSV、`.env`、產生的匯入檔案
+與 Python 快取都已設定為不會加入 Git。只有 `examples/` 第一層的虛構 CSV
+範例不受此限制；請勿把真實名單放進 `examples/`。
 
-## Import commands
+## 匯入指令
 
-Each command below is independently executable. It first writes its inspection
-file in `DATA_DIR`, then performs a real API import when it has data to import.
-Use the generation-only workflow below to inspect payloads before importing.
+以下指令都能獨立執行。每支程式會先在 `DATA_DIR` 寫出可供檢查的檔案；如果
+有資料，接著就會送出真正的 API 匯入請求。若想先檢查內容而不上傳，請使用
+下一節的「只產生檔案」方式。
 
-| Command | Inspection file | Real API import |
+| 指令 | 產生的檢查檔案 | API 動作 |
 | --- | --- | --- |
-| `python create_groups.py` | `groups.json` | Creates DOMjudge groups. |
-| `python create_teams.py` | `teams.json` | Creates DOMjudge teams for student rosters. |
-| `python create_accounts.py` | `accounts.yaml` | Creates team accounts for students and admin accounts for TAs. |
-| `python setup_domjudge.py` | All three files are built and written before any upload. | Imports groups, then teams, then accounts through one session. |
+| `python create_groups.py` | `groups.json` | 建立 DOMjudge groups。 |
+| `python create_teams.py` | `teams.json` | 為非 TA 名單中的學生建立 teams。 |
+| `python create_accounts.py` | `accounts.yaml` | 為學生建立 team accounts，為 TA 建立 admin accounts。 |
+| `python setup_domjudge.py` | 上傳前先產生全部三個檔案。 | 使用同一個連線依序匯入 groups、teams、accounts。 |
 
-The standalone importers are not dry runs: after writing their inspection file,
-each sends the corresponding real import request to the configured DOMjudge API.
-`setup_domjudge.py` first builds every payload once, so a missing or unreadable
-roster stops setup before any API request. It then uploads the generated files
-in dependency order without reading the CSV inputs again. A failed upload stops
-later stages.
+個別匯入程式不是預覽模式：寫出檢查檔案後，就會向設定的 DOMjudge API
+送出真正的匯入請求。`setup_domjudge.py` 會先建立全部資料內容，因此名單遺失、
+無法讀取或格式錯誤時，不會送出任何 API 請求。確認無誤後才會依相依順序上傳；
+任一階段失敗就不再執行後續階段。
 
-## Inspect files without uploading
+## 只產生檔案，不上傳
 
-From the repository directory, run `python` and enter the following code. Change
-`data_dir` to your roster directory (the same path you will configure as
-`DATA_DIR`). These generation/save functions need no API credentials and make
-no network requests.
+在 repository 目錄執行 `python`，輸入以下程式。請將 `data_dir` 改為實際的
+名單資料夾，也就是 `.env` 中 `DATA_DIR` 所使用的路徑。這些 generate/save
+函式不需要 API 帳密，也不會發出網路請求。
 
 ```python
 from pathlib import Path
@@ -64,8 +61,8 @@ save_teams(teams, data_dir / "teams.json")
 save_accounts(accounts, data_dir / "accounts.yaml")
 ```
 
-`teams.json` contains one student team per non-TA CSV row. The CSV filename
-becomes the group ID:
+`teams.json` 會為非 TA CSV 中的每位學生建立一個 team，CSV 檔名會成為
+group ID：
 
 ```json
 [
@@ -77,8 +74,7 @@ becomes the group ID:
 ]
 ```
 
-`accounts.yaml` contains student accounts followed by TA accounts. A student is
-bound to the team with the same ID:
+`accounts.yaml` 會包含學生帳號與 TA 帳號。學生帳號會綁定相同 ID 的 team：
 
 ```yaml
 - id: S100001
@@ -94,10 +90,9 @@ bound to the team with the same ID:
   name: Taylor Sample
 ```
 
-TA admin accounts intentionally omit `team_id`; DOMjudge 9.0.0 creates and
-binds the hidden Jury team used by administrator accounts.
+TA admin account 不會指定 `team_id`；DOMjudge 9.0.0 會自動建立並綁定管理員
+使用的隱藏 Jury team。
 
-Inspect those three files locally. When ready, configure the credentials and
-run `python setup_domjudge.py`; it rebuilds the payloads from the current CSVs
-and performs the real imports. Keep the CSVs unchanged between inspection and
-import if you want to import the data you reviewed.
+請先在本機檢查這三個檔案。確認後設定 API 帳密並執行
+`python setup_domjudge.py`，程式會依目前 CSV 重新建立內容並執行真正的匯入。
+若要確保上傳內容與檢查過的內容相同，請不要在兩次操作之間修改 CSV。
