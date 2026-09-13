@@ -3,8 +3,9 @@
 [繁體中文](README.md) | [English](README.en.md)
 
 These tools create DOMjudge groups, teams, and user accounts from CSV roster
-files. They target DOMjudge 9.0.0. The sample rosters in `examples/` contain
-entirely fictional data and are safe to copy as a starting point.
+files. They can also generate a DOMjudge problem skeleton. They target DOMjudge
+9.0.0. The sample rosters in `examples/` contain entirely fictional data and
+are safe to copy as a starting point.
 
 ## Setup
 
@@ -104,3 +105,61 @@ Inspect all three files locally. When ready, configure the API credentials and
 run `python setup_domjudge.py`. It rebuilds the payloads from the current CSVs
 and performs the real imports. Keep the CSVs unchanged between inspection and
 import if you want to upload exactly the data you reviewed.
+
+## Generate a problem skeleton
+
+`gen_problem.py` creates a DOMjudge problem directory without uploading
+anything. You can use positional arguments:
+
+```powershell
+python gen_problem.py hello 2 512
+```
+
+The equivalent named arguments are also supported:
+
+```powershell
+python gen_problem.py --name hello --timelimit 2 --memory 512
+```
+
+The arguments specify the problem name, time limit in seconds, and memory limit
+in MiB. The time and memory defaults are `1.0` second and `256` MiB when omitted.
+
+The command creates:
+
+```text
+hello/
+├── problem.yaml
+├── domjudge-problem.ini
+├── data/
+│   ├── sample/
+│   └── secret/
+└── submissions/
+    └── accepted/
+        └── AC.c
+```
+
+`problem.yaml` stores the name, output-comparison settings, and memory limit:
+
+```yaml
+name: hello
+validator_flags: case_sensitive space_change_sensitive
+limits:
+  memory: 512
+```
+
+The DOMjudge 9.0.0 time limit is stored in `domjudge-problem.ini`:
+
+```ini
+name = hello
+timelimit = 2.0
+```
+
+After generating the skeleton:
+
+1. Replace `submissions/accepted/AC.c` with the accepted solution.
+2. Add the statement as `problem.pdf` in the problem directory.
+3. Add at least one matching `.in` and `.ans` pair under `data/sample/` or
+   `data/secret/`.
+
+This section documents problem generation only. The existing behavior of
+`upload_problem.py` is unchanged by this update.

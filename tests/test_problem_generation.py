@@ -39,6 +39,20 @@ class ProblemGenerationTests(unittest.TestCase):
                 "name = demo\ntimelimit = 2.0\n",
             )
 
+    def test_generator_reports_the_selected_memory_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, str(REPOSITORY_ROOT / "gen_problem.py"), "demo", "2", "512"],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("512MiB", result.stdout)
+            self.assertNotIn("(256MB)", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

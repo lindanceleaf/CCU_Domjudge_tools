@@ -112,7 +112,7 @@ def main():
     print(f"[+] 題目目錄 '{base_dir}' 建立成功！")
     print(f"    - 名稱: {name}")
     print(f"    - 時間限制: {timelimit}s")
-    print(f"    - 記憶體限制: {memory}MiB (256MB)")
+    print(f"    - 記憶體限制: {memory}MiB")
     print(f"    - 比對模式: case_sensitive space_change_sensitive")
 
 
