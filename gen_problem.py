@@ -95,7 +95,6 @@ def main():
         "name": name,
         "validator_flags": "case_sensitive space_change_sensitive",
         "limits": {
-            "time": timelimit,
             "memory": memory
         }
     }
@@ -103,6 +102,12 @@ def main():
     yaml_path = os.path.join(base_dir, "problem.yaml")
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.dump(yaml_content, f, allow_unicode=True, sort_keys=False)
+
+    # DOMjudge 9.0.0 從 domjudge-problem.ini 讀取題目時間限制。
+    ini_path = os.path.join(base_dir, "domjudge-problem.ini")
+    with open(ini_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"name = {name}\n")
+        f.write(f"timelimit = {timelimit}\n")
 
     print(f"[+] 題目目錄 '{base_dir}' 建立成功！")
     print(f"    - 名稱: {name}")
