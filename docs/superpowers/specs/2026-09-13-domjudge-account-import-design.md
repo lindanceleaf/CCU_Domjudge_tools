@@ -32,7 +32,8 @@
 ### `create_accounts.py`
 
 - 一般學生建立 `type: team` 的帳號，`id`、`username` 及初始 `password` 使用學號，`team_id` 使用相同學號以綁定已建立的 team。
-- `TA.csv` 中每位人員建立 `type: admin` 的帳號，不設定 `team_id`，也不依賴 team。
+- `TA.csv` 中每位人員建立 `type: admin` 的帳號。依 DOMjudge 9.0.0 的 account JSON/YAML 匯入邏輯，admin 會自動取得 `team` role，DOMjudge 會在隱藏的 `Jury` category 建立或重用對應 team，並將 admin 綁定至該 team，因此 TA 可以提交程式。
+- TA 不設定 `team_id`；若設定，DOMjudge 9.0.0 仍會優先使用上述自動建立的 Jury team。學生帳號才以 `team_id` 綁定 `create_teams.py` 已建立的 team。
 - 產生 `accounts.yaml`，再以 multipart 欄位 `yaml` 上傳至 `/api/v4/users/accounts`。
 
 ### `setup_domjudge.py`
@@ -58,6 +59,6 @@
 
 ## 測試與驗收
 
-- 單元測試涵蓋：排除 TA group、排除 TA team、學生 team 分組、學生帳號綁定 team、TA admin 不綁 team、重複學號與空資料列。
+- 單元測試涵蓋：排除 TA group、排除 TA team、學生 team 分組、學生帳號明確設定 `team_id`、TA admin 交由 DOMjudge 自動建立並綁定 Jury team、重複學號與空資料列。
 - HTTP 測試以假 session 驗證 DOMjudge 9.0.0 端點、multipart 欄位及 groups → teams → accounts 呼叫順序，不接觸正式伺服器。
 - 全部測試通過後，才使用目前 `.env` 對指定 DOMjudge 進行唯讀連線檢查；實際匯入由使用者明確執行，避免測試資料寫入正式系統。
