@@ -10,10 +10,10 @@ from unittest.mock import patch
 import requests
 import yaml
 
-import create_accounts
-import create_groups
-import create_teams
-from setup_domjudge import main, run_setup
+from domjudge_tools.roster import accounts as create_accounts
+from domjudge_tools.roster import groups as create_groups
+from domjudge_tools.roster import teams as create_teams
+from domjudge_tools.roster.setup import main, run_setup
 from tests.test_common import FakeResponse
 
 
@@ -154,7 +154,7 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual([call[0] for call in session.calls], stages)
 
     def test_run_setup_creates_one_authenticated_session_for_every_upload(self):
-        with patch("setup_domjudge.requests.Session", return_value=self.session) as factory:
+        with patch("domjudge_tools.roster.setup.requests.Session", return_value=self.session) as factory:
             run_setup(self.settings)
         factory.assert_called_once_with()
         self.assertEqual(self.session.auth, ("admin", "secret"))
@@ -166,24 +166,24 @@ class SetupTests(unittest.TestCase):
                 return False
 
         supplied = FalseySession()
-        with patch("setup_domjudge.requests.Session", return_value=self.session):
+        with patch("domjudge_tools.roster.setup.requests.Session", return_value=self.session):
             run_setup(self.settings, supplied)
         self.assertEqual([call[0] for call in supplied.calls], ["groups", "teams", "accounts"])
         self.assertEqual(self.session.calls, [])
 
-    @patch("setup_domjudge.run_setup", return_value={"groups": 1, "teams": 2, "accounts": 3})
-    @patch("setup_domjudge.load_settings")
+    @patch("domjudge_tools.roster.setup.run_setup", return_value={"groups": 1, "teams": 2, "accounts": 3})
+    @patch("domjudge_tools.roster.setup.load_settings")
     @patch("builtins.print")
     def test_main_prints_summary_after_success(self, printer, load_settings, run_setup):
         """Omitting the final operator summary after a successful run is a bug."""
         load_settings.return_value = self.settings
 
-        self.assertIsNone(main())
+        self.assertEqual(main(), 0)
 
         printer.assert_called_once_with("[+] 匯入完成：groups=1, teams=2, accounts=3")
 
-    @patch("setup_domjudge.run_setup", side_effect=RuntimeError("bad"))
-    @patch("setup_domjudge.load_settings")
+    @patch("domjudge_tools.roster.setup.run_setup", side_effect=RuntimeError("bad"))
+    @patch("domjudge_tools.roster.setup.load_settings")
     @patch("builtins.print")
     def test_main_exits_one_and_prints_error_after_failure(
         self, printer, load_settings, run_setup
@@ -191,10 +191,7 @@ class SetupTests(unittest.TestCase):
         """Returning success after any importer failure is a bug."""
         load_settings.return_value = self.settings
 
-        with self.assertRaises(SystemExit) as raised:
-            main()
-
-        self.assertEqual(raised.exception.code, 1)
+        self.assertEqual(main(), 1)
         printer.assert_called_once_with("[!] bad", file=sys.stderr)
 
 

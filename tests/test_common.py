@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import requests
 
-from domjudge_common import find_csv_files, load_settings, upload_multipart
+from domjudge_common import load_settings, upload_multipart
 
 
 class FakeResponse:
@@ -61,22 +61,6 @@ class CommonRuntimeTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary_directory.cleanup()
-
-    def test_find_csv_files_matches_csv_case_insensitively_and_sorts(self):
-        (self.root / "zeta.CSV").write_text("name,id\n", encoding="utf-8")
-        (self.root / "Alpha.csv").write_text("name,id\n", encoding="utf-8")
-        (self.root / "notes.txt").write_text("ignore", encoding="utf-8")
-        self.assertEqual(
-            [path.name for path in find_csv_files(self.root)],
-            ["Alpha.csv", "zeta.CSV"],
-        )
-
-    def test_find_csv_files_rejects_directory_without_rosters(self):
-        (self.root / "notes.txt").write_text("not a roster", encoding="utf-8")
-        with self.assertRaises(ValueError) as raised:
-            find_csv_files(self.root)
-        self.assertIn(str(self.root), str(raised.exception))
-        self.assertIn("CSV", str(raised.exception))
 
     def test_upload_multipart_posts_named_field_with_timeout(self):
         payload = self.root / "groups.json"

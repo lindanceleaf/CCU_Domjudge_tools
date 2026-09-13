@@ -1,75 +1,74 @@
-# DOMjudge account-import tools
+# CCU DOMjudge Tools
 
 [繁體中文](README.md) | [English](README.en.md)
 
-These tools create DOMjudge groups, teams, and user accounts from CSV roster
-files. They can also generate a DOMjudge problem skeleton. They target DOMjudge
-9.0.0. The sample rosters in `examples/` contain entirely fictional data and
-are safe to copy as a starting point.
+Create DOMjudge groups, teams, and accounts from CSV rosters, and generate or
+upload problem packages. The current target is DOMjudge 9.0.0. All rosters in
+`examples/` are fictional and safe to copy.
 
-## Setup
+## Installation and configuration
 
-Install the dependencies, then copy `.env.example` to `.env` and enter the
-DOMjudge URL and API credentials. Set `DATA_DIR` to the directory that holds
-your roster CSV files; it defaults to the current directory.
+Python 3.10 or newer is required. From the repository directory, run:
 
-CSV files require the header `name,id`; additional columns such as `email` are
-allowed. Every roster except `TA.csv` is a student group. `TA.csv` creates
-administrator accounts.
-
-```sh
-python -m pip install -r requirements.txt
+```powershell
+python -m pip install -e .
+ccudj --help
 ```
 
-Keep real rosters in the configured data directory. CSV files at every depth,
-`.env`, generated import files, and Python caches are ignored by Git. Only the
-fictional CSVs directly inside `examples/` are exempt; do not put real rosters
-there.
+Copy `.env.example` to `.env` and configure it:
 
-## Import commands
+```dotenv
+DOMJUDGE_URL=https://judge.example.edu
+API_USER=admin
+API_PASS=your-password
+DATA_DIR=rosters/fall
+```
 
-Each command below is independently executable. It first writes an inspection
-file in `DATA_DIR`, then performs a real API import when it has data to import.
-Use the generation-only workflow in the next section to inspect payloads before
-importing.
+CSV files require the `name,id` header; additional columns such as `email` are
+allowed. Every filename except `TA.csv` represents a student group. `TA.csv`
+creates administrator accounts. Real rosters, `.env`, generated imports, and
+zip files are excluded by `.gitignore`.
 
-| Command | Inspection file | API action |
+## Roster imports
+
+| Command | Output | Behavior |
 | --- | --- | --- |
-| `python create_groups.py` | `groups.json` | Creates DOMjudge groups. |
-| `python create_teams.py` | `teams.json` | Creates teams for students in non-TA rosters. |
-| `python create_accounts.py` | `accounts.yaml` | Creates team accounts for students and admin accounts for TAs. |
-| `python setup_domjudge.py` | Builds all three files before uploading. | Imports groups, teams, and accounts in order through one session. |
+| `ccudj groups` | `groups.json` | Creates groups from non-TA CSV filenames. |
+| `ccudj teams` | `teams.json` | Creates teams for students in non-TA rosters. |
+| `ccudj accounts` | `accounts.yaml` | Creates student team accounts and TA admin accounts. |
+| `ccudj setup` | All three files | Imports groups → teams → accounts. |
 
-The standalone importers are not dry runs: after writing their inspection file,
-they send the corresponding real import request to the configured DOMjudge API.
-`setup_domjudge.py` builds every payload first, so a missing, unreadable, or
-invalid roster stops setup before any API request. It then uploads in dependency
-order; a failed upload stops all later stages.
+These are not preview commands. After writing an inspection file, a command
+sends a real API request when data is available. `ccudj setup` builds every
+payload before the first request and stops after any failed stage.
 
-## Generate files without uploading
+The previous commands remain available:
 
-From the repository directory, run `python` and enter the following code. Change
-`data_dir` to your roster directory, matching the `DATA_DIR` path in `.env`.
-These generate/save functions need no API credentials and make no network
-requests.
+```powershell
+python create_groups.py
+python create_teams.py
+python create_accounts.py
+python setup_domjudge.py
+python upload_problem.py hello
+```
+
+### Generate files without uploading
+
+These functions require no API credentials and make no network requests:
 
 ```python
 from pathlib import Path
-from create_groups import generate_groups, save_groups
-from create_teams import generate_teams, save_teams
-from create_accounts import generate_accounts, save_accounts
+from domjudge_tools.roster.groups import generate_groups, save_groups
+from domjudge_tools.roster.teams import generate_teams, save_teams
+from domjudge_tools.roster.accounts import generate_accounts, save_accounts
 
 data_dir = Path("rosters/fall")
-groups = generate_groups(data_dir)
-teams = generate_teams(data_dir)
-accounts = generate_accounts(data_dir)
-save_groups(groups, data_dir / "groups.json")
-save_teams(teams, data_dir / "teams.json")
-save_accounts(accounts, data_dir / "accounts.yaml")
+save_groups(generate_groups(data_dir), data_dir / "groups.json")
+save_teams(generate_teams(data_dir), data_dir / "teams.json")
+save_accounts(generate_accounts(data_dir), data_dir / "accounts.yaml")
 ```
 
-`teams.json` contains one student team per non-TA CSV row. The CSV filename
-becomes the group ID:
+`teams.json` format:
 
 ```json
 [
@@ -81,8 +80,7 @@ becomes the group ID:
 ]
 ```
 
-`accounts.yaml` contains student and TA accounts. Each student account is bound
-to the team with the same ID:
+`accounts.yaml` format:
 
 ```yaml
 - id: S100001
@@ -98,33 +96,21 @@ to the team with the same ID:
   name: Taylor Sample
 ```
 
-TA admin accounts intentionally omit `team_id`; DOMjudge 9.0.0 automatically
-creates and binds the hidden Jury team used by administrator accounts.
+Each student account is bound to the team with the same ID. TA administrators
+omit `team_id`; DOMjudge 9.0.0 creates and binds their hidden Jury team.
 
-Inspect all three files locally. When ready, configure the API credentials and
-run `python setup_domjudge.py`. It rebuilds the payloads from the current CSVs
-and performs the real imports. Keep the CSVs unchanged between inspection and
-import if you want to upload exactly the data you reviewed.
+## Problem tools
 
-## Generate a problem skeleton
-
-`gen_problem.py` creates a DOMjudge problem directory without uploading
-anything. You can use positional arguments:
+Generate a problem skeleton:
 
 ```powershell
-python gen_problem.py hello 2 512
+ccudj problem new hello 2 512
+ccudj problem new --name hello --timelimit 2 --memory 512
 ```
 
-The equivalent named arguments are also supported:
-
-```powershell
-python gen_problem.py --name hello --timelimit 2 --memory 512
-```
-
-The arguments specify the problem name, time limit in seconds, and memory limit
-in MiB. The time and memory defaults are `1.0` second and `256` MiB when omitted.
-
-The command creates:
+The arguments are the name, time limit in seconds, and memory limit in MiB.
+Defaults are `1.0` second and `256` MiB. The legacy
+`python gen_problem.py ...` command remains available.
 
 ```text
 hello/
@@ -138,28 +124,46 @@ hello/
         └── AC.c
 ```
 
-`problem.yaml` stores the name, output-comparison settings, and memory limit:
-
-```yaml
-name: hello
-validator_flags: case_sensitive space_change_sensitive
-limits:
-  memory: 512
-```
-
-The DOMjudge 9.0.0 time limit is stored in `domjudge-problem.ini`:
+`problem.yaml` stores the name, output comparison mode, and memory limit. The
+DOMjudge 9.0.0 time limit is stored in `domjudge-problem.ini`:
 
 ```ini
 name = hello
 timelimit = 2.0
 ```
 
-After generating the skeleton:
+After adding `problem.pdf`, the accepted solution, and at least one matching
+`.in`/`.ans` pair, run the existing validation, packaging, and upload flow:
 
-1. Replace `submissions/accepted/AC.c` with the accepted solution.
-2. Add the statement as `problem.pdf` in the problem directory.
-3. Add at least one matching `.in` and `.ans` pair under `data/sample/` or
-   `data/secret/`.
+```powershell
+ccudj problem upload hello
+```
 
-This section documents problem generation only. The existing behavior of
-`upload_problem.py` is unchanged by this update.
+The existing `--AC`, `--pdf`, and `--save` options are supported.
+
+## Project structure
+
+```text
+src/domjudge_tools/
+├── cli.py                 # ccudj entry point
+├── config.py              # .env and settings
+├── api_client.py          # shared DOMjudge HTTP code
+├── roster/
+│   ├── groups.py
+│   ├── teams.py
+│   ├── accounts.py
+│   └── setup.py
+└── problem/
+    ├── generator.py
+    └── uploader.py
+```
+
+Features are grouped by domain and each Python file has one responsibility.
+The old root scripts are compatibility entry points. Core tests live in
+`tests/`, and GitHub Actions runs them on pushes and pull requests.
+
+## Development
+
+```powershell
+python -m unittest discover -v
+```

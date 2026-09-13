@@ -12,5 +12,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
+*.egg-info/
+build/
+dist/
 .worktrees/
 .superpowers/
