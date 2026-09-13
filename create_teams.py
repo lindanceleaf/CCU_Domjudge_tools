@@ -1,122 +1,98 @@
 #!/usr/bin/env python3
+"""Create DOMjudge teams from student roster CSV files."""
+
 import csv
-import glob
 import json
-import os
 import sys
-from dotenv import load_dotenv
+from pathlib import Path
+
 import requests
 
-# 1. 載入 .env 環境變數
-load_dotenv()
-
-DOMJUDGE_URL = os.getenv("DOMJUDGE_URL")
-API_USER = os.getenv("API_USER")
-API_PASS = os.getenv("API_PASS")
-DATA_DIR = os.getenv("DATA_DIR", "./")
-
-if not all([DOMJUDGE_URL, API_USER, API_PASS]):
-    print("[!] 錯誤：請確認 .env 檔案中已設定 DOMJUDGE_URL, API_USER, API_PASS")
-    sys.exit(1)
-
-DOMJUDGE_URL = DOMJUDGE_URL.rstrip('/')
+from domjudge_common import find_csv_files, load_settings, upload_multipart
 
 
-def generate_teams_json(data_dir):
+def build_teams(data_dir: str | Path) -> list[dict[str, object]]:
+    """Build one DOMjudge team per student in the non-TA roster files.
+
+    CSV files are processed in the deterministic order supplied by
+    :func:`find_csv_files`; when an ID appears more than once, its first row is
+    retained and the later file/line is reported to the operator.
     """
-    讀取 data_dir 下的所有 CSV 檔案：
-    - TA.csv: 歸類至系統內建的 'observers' 群組
-    - 其它 CSV: 歸類至各自檔名對應的群組
-    產生 teams.json
-    """
-    csv_pattern = os.path.join(data_dir, "*.csv")
-    csv_files = glob.glob(csv_pattern)
+    teams: list[dict[str, object]] = []
+    seen_ids: dict[str, tuple[str, int]] = {}
 
-    if not csv_files:
-        print(f"[!] 在目錄 '{data_dir}' 中找不到任何 CSV 檔案。")
-        sys.exit(1)
+    for csv_path in find_csv_files(data_dir):
+        if csv_path.stem.upper() == "TA":
+            continue
 
-    teams = []
-    seen_team_ids = set()
-
-    for file_path in csv_files:
-        filename = os.path.basename(file_path)
-        base_name, _ = os.path.splitext(filename)
-        is_ta = (base_name.upper() == "TA")
-
-        # TA 歸入 observers，學生歸入各班級群組
-        target_group = "observers" if is_ta else base_name
-
-        with open(file_path, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            next(reader, None)  # 略過第一行表頭
-
-            for row_idx, row in enumerate(reader, start=2):
-                if not row or len(row) < 2:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as source:
+            reader = csv.reader(source)
+            next(reader, None)
+            for row_number, row in enumerate(reader, start=2):
+                if len(row) < 2:
                     continue
-
                 name = row[0].strip()
                 student_id = row[1].strip()
-
                 if not student_id:
                     continue
-
-                if student_id in seen_team_ids:
-                    print(f"[-] 警告：發現重複學號 '{student_id}' (位於 {filename}:{row_idx})，跳過重複項。")
+                if student_id in seen_ids:
+                    first_file, first_line = seen_ids[student_id]
+                    print(
+                        f"[-] 警告：發現重複學號 '{student_id}' "
+                        f"(首次位於 {first_file}:{first_line}，跳過 {csv_path.name}:{row_number})"
+                    )
                     continue
 
-                seen_team_ids.add(student_id)
+                seen_ids[student_id] = (csv_path.name, row_number)
+                teams.append(
+                    {"id": student_id, "group_ids": [csv_path.stem], "name": name}
+                )
 
-                teams.append({
-                    "id": student_id,
-                    "group_ids": [target_group],
-                    "name": name
-                })
-
-    output_filename = "teams.json"
-    with open(output_filename, "w", encoding="utf-8") as f:
-        json.dump(teams, f, ensure_ascii=False, indent=2)
-
-    print(f"[*] 成功產出 {output_filename} (共 {len(teams)} 支隊伍，含 TA/學生)")
-    return teams, output_filename
+    return teams
 
 
-def upload_teams(base_url, username, password, file_path, team_count):
-    """透過 API 上傳 teams.json 至 DOMjudge"""
+def write_teams(teams, output_path) -> Path:
+    """Write teams as UTF-8 indented JSON and return the destination path."""
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(teams, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return destination
+
+
+def upload_teams(session, base_url, output_path, team_count) -> bool:
+    """Upload a non-empty teams JSON file through the v4 multipart endpoint."""
     if team_count == 0:
-        print("[-] 目前沒有可上傳的隊伍資料，略過上傳。")
-        return
-
-    session = requests.Session()
-    session.auth = (username, password)
-
-    url = f"{base_url}/api/v4/users/teams"
-    print(f"[*] 正在上傳 teams 至 {url} ...")
-
-    with open(file_path, "rb") as f:
-        files = {"json": (os.path.basename(file_path), f, "application/json")}
-        resp = session.post(url, files=files)
-
-    # 404 相容處理
-    if resp.status_code == 404:
-        fallback_url = f"{base_url}/api/users/teams"
-        print(f"  [-] /api/v4 回傳 404，嘗試端點：{fallback_url}")
-        with open(file_path, "rb") as f:
-            files = {"json": (os.path.basename(file_path), f, "application/json")}
-            resp = session.post(fallback_url, files=files)
-
-    if resp.ok:
-        print(f"[+] teams 上傳成功！ (Status: {resp.status_code})")
-    else:
-        print(f"[!] teams 上傳失敗！ (Status: {resp.status_code})")
-        print(f"    錯誤訊息: {resp.text}")
-        sys.exit(1)
+        return True
+    upload_multipart(session, base_url, "/api/v4/users/teams", "json", output_path)
+    return True
 
 
-def main():
-    teams, json_file = generate_teams_json(DATA_DIR)
-    upload_teams(DOMJUDGE_URL, API_USER, API_PASS, json_file, len(teams))
+def run_teams(settings, session=None) -> int:
+    """Build, persist, and optionally upload teams; return the team count."""
+    teams = build_teams(settings.data_dir)
+    output_path = write_teams(teams, Path(settings.data_dir) / "teams.json")
+    if not teams:
+        return 0
+    if session is None:
+        session = requests.Session()
+        session.auth = (settings.api_user, settings.api_pass)
+    upload_teams(session, settings.base_url, output_path, len(teams))
+    return len(teams)
+
+
+def main() -> int:
+    try:
+        settings = load_settings()
+        session = requests.Session()
+        session.auth = (settings.api_user, settings.api_pass)
+        run_teams(settings, session)
+    except (ValueError, OSError, requests.RequestException) as error:
+        print(f"[!] {error}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
