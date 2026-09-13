@@ -51,15 +51,15 @@ no network requests.
 
 ```python
 from pathlib import Path
-from create_groups import build_groups, write_groups
+from create_groups import generate_groups, save_groups
 from create_teams import build_teams, write_teams
 from create_accounts import build_accounts, write_accounts
 
 data_dir = Path("rosters/fall")
-groups = build_groups(data_dir)
+groups = generate_groups(data_dir)
 teams = build_teams(data_dir)
 accounts = build_accounts(data_dir)
-write_groups(groups, data_dir / "groups.json")
+save_groups(groups, data_dir / "groups.json")
 write_teams(teams, data_dir / "teams.json")
 write_accounts(accounts, data_dir / "accounts.yaml")
 ```

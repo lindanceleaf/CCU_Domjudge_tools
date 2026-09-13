@@ -21,18 +21,19 @@ def create_session(settings):
 
 def run_setup(settings, session=None) -> dict[str, int]:
     """Build all payloads before uploading them in dependency order."""
-    groups = create_groups.build_groups(settings.data_dir)
+    groups = create_groups.generate_groups(settings.data_dir)
     teams = create_teams.build_teams(settings.data_dir)
     accounts = create_accounts.build_accounts(settings.data_dir)
 
     directory = Path(settings.data_dir)
-    groups_path = create_groups.write_groups(groups, directory / "groups.json")
+    groups_path = create_groups.save_groups(groups, directory / "groups.json")
     teams_path = create_teams.write_teams(teams, directory / "teams.json")
     accounts_path = create_accounts.write_accounts(accounts, directory / "accounts.yaml")
 
     if session is None:
         session = create_session(settings)
-    create_groups.upload_groups(session, settings.base_url, groups_path, len(groups))
+    if groups:
+        create_groups.upload_groups(groups_path, settings.base_url, session)
     create_teams.upload_teams(session, settings.base_url, teams_path, len(teams))
     create_accounts.upload_accounts(session, settings.base_url, accounts_path, len(accounts))
     return {"groups": len(groups), "teams": len(teams), "accounts": len(accounts)}

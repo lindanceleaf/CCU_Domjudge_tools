@@ -79,6 +79,7 @@ class SetupTests(unittest.TestCase):
 
     def test_run_setup_builds_each_payload_once_before_first_upload(self):
         modules = [create_groups, create_teams, create_accounts]
+        builder_names = ["generate_groups", "build_teams", "build_accounts"]
         build_counts = {"groups": 0, "teams": 0, "accounts": 0}
 
         def track_build(stage, original):
@@ -89,9 +90,9 @@ class SetupTests(unittest.TestCase):
             return build
 
         with ExitStack() as stack:
-            for module, stage in zip(modules, build_counts):
+            for module, builder_name, stage in zip(modules, builder_names, build_counts):
                 stack.enter_context(patch.object(
-                    module, f"build_{stage}", track_build(stage, getattr(module, f"build_{stage}"))
+                    module, builder_name, track_build(stage, getattr(module, builder_name))
                 ))
             run_setup(self.settings, self.session)
 
