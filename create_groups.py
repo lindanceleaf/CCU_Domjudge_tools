@@ -10,4 +10,5 @@ from domjudge_tools.roster.groups import generate_groups, main, save_groups, upl
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from domjudge_tools.cli import main as cli_main
+    raise SystemExit(cli_main(["groups", *sys.argv[1:]]))

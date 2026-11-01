@@ -132,7 +132,7 @@ name = hello
 timelimit = 2.0
 ```
 
-After adding `problem.pdf`, the accepted solution, and at least one matching
+After adding a nonempty `problem.html`, `problem.pdf`, or `problem.txt`, the accepted solution, and at least one matching
 `.in`/`.ans` pair, run the existing validation, packaging, and upload flow:
 
 ```powershell
@@ -140,6 +140,72 @@ ccudj problem upload hello
 ```
 
 The existing `--AC`, `--pdf`, and `--save` options are supported.
+
+## Portable tools, problem banks, and course data
+
+The tools can operate on problem directories outside this repository. Keep the
+private problem bank, test-data authoring scripts, and course rosters in separate
+directories. Install the tools with `python -m pip install -e .`.
+
+Select an environment file explicitly, or set `CCUDJ_ENV_FILE`:
+
+```dotenv
+DOMJUDGE_URL=https://judge.example.edu
+API_USER=admin
+API_PASS=your-password
+DATA_DIR=rosters
+OUTPUT_DIR=generated
+```
+
+`--env` takes precedence over `CCUDJ_ENV_FILE`. With neither set, the current
+working directory and its parents are searched for `.env`. Environment variables
+override file values; loading a file does not mutate the process environment.
+Relative `DATA_DIR` and `OUTPUT_DIR` values are resolved against the selected
+environment file's directory. Without `OUTPUT_DIR`, generated roster files are
+written to `DATA_DIR`, preserving the original workflow.
+
+```powershell
+ccudj --env ../course-data/115-1/.env setup
+ccudj teams --env ../course-data/115-1/.env --data-dir ../course-data/115-1/rosters --output-dir ../course-data/115-1/generated
+```
+
+All four roster commands support the directory overrides. Command-line paths are
+relative to the working directory and override configured values. Legacy roster
+scripts also accept these options. Roster commands still perform actual uploads.
+
+Create a problem with a separate identifier, parent directory, and display title:
+
+```powershell
+ccudj problem new new-problem --output-dir ../problem-bank/problems --title "A New Problem" --timelimit 1 --memory 256
+```
+
+The original positional arguments still work. A full destination path is also
+accepted without `--output-dir`; its basename becomes the default display title.
+
+Statements may be nonempty `problem.html`, `problem.pdf`, or `problem.txt`.
+
+```powershell
+ccudj problem upload ../problem-bank/problems/new-problem --validate-only
+ccudj --env ../course-data/115-1/.env problem upload ../problem-bank/problems/new-problem --output-dir ../problem-bank/dist --save
+```
+
+`--validate-only` checks statement/reference presence and recursive input/answer
+pairing without credentials, ZIP creation, or network requests. Per-problem
+verification scripts remain responsible for compilation, answer correctness, and
+input bounds. The global upload endpoint creates problems without linking contests.
+`--skip-statement-check` replaces the old name `--pdf`, which remains an alias.
+
+Archives include root statement files, `problem.yaml`, `domjudge-problem.ini`,
+and the standard directories `data/`, `submissions/`, `input_validators/`,
+`output_validators/`, `include/`, `attachments/`, and `problem_statement/`.
+Inside `data/`, only `.in`, `.ans`, and `testdata.yaml` are included.
+Local environment files, compiled artifacts, caches, symlinks, and the destination
+ZIP itself are excluded. Keep authoring scripts and reports outside the import
+bundle. Self-contained HTML statements can be used directly.
+
+After moving the tools checkout, recreate the virtual environment and reinstall
+with `.venv/Scripts/python.exe -m pip install -e .`; activate that environment to
+use its `ccudj` command.
 
 ## Project structure
 

@@ -15,6 +15,8 @@ class RepositoryHygieneTests(unittest.TestCase):
         """Publishing a local roster, import artifact, or cache is a bug."""
         paths = (
             ".env",
+            "course.env",
+            ".env.local",
             "students.csv",
             "rosters/fall/students.csv",
             "rosters/fall/ta.CSV",
@@ -25,6 +27,9 @@ class RepositoryHygieneTests(unittest.TestCase):
             "rosters/fall/accounts.yaml",
             "__pycache__/module.pyc",
             "module.pyc",
+            "output/problems/private/problem.html",
+            ".venv/Scripts/python.exe",
+            "test-results.log",
         )
         result = subprocess.run(
             ["git", "-c", f"core.excludesFile={os.devnull}", "check-ignore", "--no-index", "--stdin", "-z"],

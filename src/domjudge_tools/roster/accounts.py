@@ -8,7 +8,7 @@ import requests
 import yaml
 
 from ..api_client import upload_multipart
-from ..config import load_settings
+from ..config import load_settings, roster_output_dir
 
 
 def generate_accounts(data_dir: str | Path) -> list[dict[str, str]]:
@@ -69,11 +69,12 @@ def upload_accounts(yaml_path: str | Path, domjudge_url: str, session: requests.
     upload_multipart(session, domjudge_url, "/api/v4/users/accounts", "yaml", yaml_path)
 
 
-def main() -> int:
+def main(settings=None) -> int:
     try:
-        settings = load_settings()
+        if settings is None:
+            settings = load_settings()
         accounts = generate_accounts(settings.data_dir)
-        yaml_path = save_accounts(accounts, settings.data_dir / "accounts.yaml")
+        yaml_path = save_accounts(accounts, roster_output_dir(settings) / "accounts.yaml")
         if not accounts:
             print("[-] 名單中沒有帳號，不需要建立 account。")
             return 0

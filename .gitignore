@@ -1,5 +1,8 @@
 # Local credentials, source rosters at any depth, and generated imports.
 .env
+*.env
+.env.*
+!.env.example
 *.[cC][sS][vV]
 !/examples/*.[cC][sS][vV]
 groups.json
@@ -17,3 +20,6 @@ build/
 dist/
 .worktrees/
 .superpowers/
+.venv/
+output/
+*.log

@@ -24,12 +24,12 @@ class FailedResponse:
 class FailedSession:
     auth = None
 
-    def post(self, url, *, files):
+    def post(self, url, *, files, timeout):
         return FailedResponse()
 
 
 class ExceptionSession(FailedSession):
-    def post(self, url, *, files):
+    def post(self, url, *, files, timeout):
         raise requests.ConnectionError("offline")
 
 

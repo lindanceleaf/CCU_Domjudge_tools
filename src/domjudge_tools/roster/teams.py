@@ -8,7 +8,7 @@ from pathlib import Path
 import requests
 
 from ..api_client import upload_multipart
-from ..config import load_settings
+from ..config import load_settings, roster_output_dir
 
 
 def generate_teams(data_dir: str | Path) -> list[dict[str, object]]:
@@ -58,11 +58,12 @@ def upload_teams(json_path: str | Path, domjudge_url: str, session: requests.Ses
     upload_multipart(session, domjudge_url, "/api/v4/users/teams", "json", json_path)
 
 
-def main() -> int:
+def main(settings=None) -> int:
     try:
-        settings = load_settings()
+        if settings is None:
+            settings = load_settings()
         teams = generate_teams(settings.data_dir)
-        json_path = save_teams(teams, settings.data_dir / "teams.json")
+        json_path = save_teams(teams, roster_output_dir(settings) / "teams.json")
         if not teams:
             print("[-] 沒有學生名單，不需要建立 team。")
             return 0

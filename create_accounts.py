@@ -10,4 +10,5 @@ from domjudge_tools.roster.accounts import generate_accounts, main, save_account
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from domjudge_tools.cli import main as cli_main
+    raise SystemExit(cli_main(["accounts", *sys.argv[1:]]))

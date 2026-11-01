@@ -10,4 +10,5 @@ from domjudge_tools.roster.setup import create_session, main, run_setup
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from domjudge_tools.cli import main as cli_main
+    raise SystemExit(cli_main(["setup", *sys.argv[1:]]))

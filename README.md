@@ -129,7 +129,8 @@ name = hello
 timelimit = 2.0
 ```
 
-完成 `problem.pdf`、`AC.c` 與至少一組同名 `.in`／`.ans` 後，可執行原有的
+完成 `problem.html`、`problem.pdf` 或 `problem.txt` 其中一份非空題本、
+`AC.c` 與至少一組同名 `.in`／`.ans` 後，可執行原有的
 驗證、打包與上傳流程：
 
 ```powershell
@@ -137,6 +138,91 @@ ccudj problem upload hello
 ```
 
 此指令也支援原有的 `--AC`、`--pdf`、`--save` 選項。
+`--pdf` 是略過題本檢查的舊名稱，新名稱為 `--skip-statement-check`。
+
+### 工具、題庫與課程資料分開存放
+
+工具安裝後可使用題目資料夾的相對或絕對路徑。以下結構可分別管理工具、私人題庫與本機課程資料：
+
+```text
+workspace/
+├── domjudge-tools/            # 本專案
+├── problem-bank/
+│   ├── problems/
+│   │   └── new-problem/       # 題本、設定、data/、submissions/
+│   ├── authoring/            # 測資產生與答案驗證程式
+│   ├── records/              # 測資說明與上傳紀錄
+│   └── dist/                 # 題目 ZIP
+└── course-data/
+    └── 115-1/
+        ├── .env
+        ├── rosters/
+        └── generated/
+```
+
+可將設定放在課程資料夾，使用 `--env` 指定（可放在子指令前或後）：
+
+```dotenv
+DOMJUDGE_URL=https://judge.example.edu
+API_USER=admin
+API_PASS=your-password
+DATA_DIR=rosters
+OUTPUT_DIR=generated
+```
+
+`--env` 優先於環境變數 `CCUDJ_ENV_FILE`；兩者均未指定時，會從執行目錄向上尋找
+`.env`。作業系統環境變數優先於檔案中的同名設定，載入檔案不會修改程序環境。
+
+有選定設定檔時，`DATA_DIR` 與 `OUTPUT_DIR` 的相對路徑以該設定檔所在目錄為準。
+未設定 `OUTPUT_DIR` 時，匯入檔仍寫回 `DATA_DIR`，保留舊用法。
+命令列的 `--data-dir` 與 `--output-dir` 則以執行目錄為準，並優先於設定檔。
+
+```powershell
+ccudj --env ../course-data/115-1/.env setup
+ccudj teams --env ../course-data/115-1/.env --data-dir ../course-data/115-1/rosters --output-dir ../course-data/115-1/generated
+```
+
+`groups`、`teams`、`accounts`、`setup` 都支援這些選項；
+`python create_groups.py` 等舊入口也可使用相同選項。這些名單指令仍會實際上傳。
+
+### 題目存放位置與顯示題名
+
+題目資料夾名稱與顯示題名可分開指定：
+
+```powershell
+ccudj problem new new-problem --output-dir ../problem-bank/problems --title "A New Problem" --timelimit 1 --memory 256
+```
+
+這會建立 `../problem-bank/problems/new-problem/`，並將題名寫為 `A New Problem`。
+原本的 `ccudj problem new hello 2 512` 與直接指定完整資料夾路徑的用法仍可使用；
+未指定 `--title` 時，題名使用資料夾名稱，不包含父目錄路徑。
+
+### 只檢查題目與指定 ZIP 輸出目錄
+
+```powershell
+ccudj problem upload ../problem-bank/problems/new-problem --validate-only
+ccudj --env ../course-data/115-1/.env problem upload ../problem-bank/problems/new-problem --output-dir ../problem-bank/dist --save
+```
+
+`--validate-only` 檢查題本、C 參考解答是否存在與測資配對，支援遞迴檢查測資子目錄，
+不讀取 API 帳密、不建立 ZIP、不發送請求。編譯、答案與測資範圍的驗證由各題的驗證程式負責。
+上傳使用全域題目 API，建立題目後不會自動連結 contest。
+
+題目 ZIP 只收根目錄的 `problem.html/pdf/txt`、`problem.yaml`、`domjudge-problem.ini`，
+以及 `data/`、`submissions/`、`input_validators/`、`output_validators/`、
+`include/`、`attachments/`、`problem_statement/`。
+`data/` 內只收 `.in`、`.ans` 與 `testdata.yaml`。
+本機 `.env*`、`*.env`、編譯產物、快取、符號連結與 ZIP 本身會排除；
+題本資源請依題目格式放在支援的目錄中，獨立 HTML 可直接使用。
+
+若工具專案搬到新路徑，請在新位置重建虛擬環境並重新安裝：
+
+```powershell
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -e .
+```
+
+啟用新的虛擬環境後即可繼續使用 `ccudj`；不建議直接沿用搬動前的 `.venv`。
 
 ## 專案架構
 

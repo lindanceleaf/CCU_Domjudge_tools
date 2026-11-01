@@ -7,7 +7,7 @@ from pathlib import Path
 import requests
 
 from ..api_client import upload_multipart
-from ..config import load_settings
+from ..config import load_settings, roster_output_dir
 
 
 def generate_groups(data_dir: str | Path) -> list[dict[str, str]]:
@@ -41,11 +41,12 @@ def upload_groups(json_path: str | Path, domjudge_url: str, session: requests.Se
     upload_multipart(session, domjudge_url, "/api/v4/users/groups", "json", json_path)
 
 
-def main() -> int:
+def main(settings=None) -> int:
     try:
-        settings = load_settings()
+        if settings is None:
+            settings = load_settings()
         groups = generate_groups(settings.data_dir)
-        json_path = save_groups(groups, settings.data_dir / "groups.json")
+        json_path = save_groups(groups, roster_output_dir(settings) / "groups.json")
         if not groups:
             print("[-] 只有 TA 名單，不需要建立 group。")
             return 0

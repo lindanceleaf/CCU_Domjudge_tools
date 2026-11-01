@@ -1,11 +1,9 @@
 """Run all roster imports in dependency order."""
 
 import sys
-from pathlib import Path
-
 import requests
 
-from ..config import load_settings
+from ..config import load_settings, roster_output_dir
 from . import accounts, groups, teams
 
 
@@ -20,7 +18,7 @@ def run_setup(settings, session=None) -> dict[str, int]:
     generated_teams = teams.generate_teams(settings.data_dir)
     generated_accounts = accounts.generate_accounts(settings.data_dir)
 
-    directory = Path(settings.data_dir)
+    directory = roster_output_dir(settings)
     groups_path = groups.save_groups(generated_groups, directory / "groups.json")
     teams_path = teams.save_teams(generated_teams, directory / "teams.json")
     accounts_path = accounts.save_accounts(generated_accounts, directory / "accounts.yaml")
@@ -41,9 +39,9 @@ def run_setup(settings, session=None) -> dict[str, int]:
     }
 
 
-def main() -> int:
+def main(settings=None) -> int:
     try:
-        summary = run_setup(load_settings())
+        summary = run_setup(load_settings() if settings is None else settings)
     except Exception as error:
         print(f"[!] {error}", file=sys.stderr)
         return 1
